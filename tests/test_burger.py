@@ -11,7 +11,6 @@ from praktikum.ingredient import Ingredient
 @allure.suite("Тестирование класса Burger")
 @allure.feature("Основные функции бургера")
 class TestBurger:
-
     @pytest.fixture(autouse=True)
     def setup(self, mock_bun, mock_ingredient):
         """Подготовка тестового окружения для каждого теста."""
@@ -25,8 +24,7 @@ class TestBurger:
     @allure.description("Проверяет корректность установки булочки через метод set_buns.")
     def test_set_buns(self):
         with allure.step("Устанавливаем моковую булочку в бургер"):
-            self.burger.set_buns(self.mock_bun)
-       
+            self.burger.set_buns(self.mock_bun)      
         with allure.step("Проверяем, что булочка установлена корректно"):
             assert self.burger.bun == self.mock_bun, "Булочка не была установлена"
 
@@ -36,8 +34,7 @@ class TestBurger:
     @pytest.mark.parametrize("count", [1, 2, 3], ids=["один ингредиент", "два ингредиента", "три ингредиента"])
     def test_add_ingredient(self, count):
         with allure.step(f"Добавляем {count} ингредиентов в бургер"):
-            for _ in range(count):
-                self.burger.add_ingredient(self.mock_ingredient)
+            self.burger.ingredients.extend([self.mock_ingredient] * count)        
         with allure.step("Проверяем количество добавленных ингредиентов"):
             assert len(self.burger.ingredients) == count, f"Ожидалось {count} ингредиентов"
 
@@ -106,17 +103,12 @@ class TestBurger:
             self.burger.add_ingredient(ingredient_2)
         with allure.step("Генерируем чек"):
             receipt = self.burger.get_receipt()
-        with allure.step("Проверяем содержимое чека"):
-            expected_lines = [
-                "(==== Чёрная булочка ====)",
-                "= sauce Острый соус =",
-                "= filling Котлета =",
-                "(==== Чёрная булочка ====)\n",
-                f"Price: {self.burger.get_price()}"
-            ]
-            for line in expected_lines:
-                assert line in receipt, f"Строка '{line}' отсутствует в чеке"
-        allure.attach(receipt, name="Сгенерированный чек", attachment_type="text")
+        with allure.step("Формируем ожидаемое содержимое чека"):
+            expected_lines = ["(==== Чёрная булочка ====)", "= sauce Острый соус =", "= filling Котлета =", "(==== Чёрная булочка ====)\n", f"Price: {self.burger.get_price()}"]
+            expected_receipt = "\n".join(expected_lines)
+        with allure.step("Проверяем полное соответствие сгенерированного чека ожидаемому"):
+            assert receipt == expected_receipt, ("Сгенерированный чек не соответствует ожидаемому.\n" f"Ожидаемо:\n{expected_receipt}\n" f"Получено:\n{receipt}")
+        allure.attach(receipt, name="Сгенерированный чек", attachment_type=allure.attachment_type.TEXT)
 
     @allure.title("Тест расчёта цены без булочки")
     @allure.description("Проверяет, что при отсутствии булочки возникает ошибка при расчёте цены.")
@@ -156,42 +148,45 @@ class TestBurger:
                 self.burger.remove_ingredient(99)
 
 
-    @allure.title("Тест перемещения ингредиента с некорректными индексами")
-    @allure.description("Проверяет обработку некорректных индексов при перемещении ингредиента.")
-    @pytest.mark.parametrize(
-        "from_idx,to_idx,expects_exception,expected_result",
-        [
-            (-3, 0, True, None),         # from_idx вне диапазона → IndexError
-            (99, 0, True, None),         # from_idx вне диапазона → IndexError
-            (-1, 0, False, "moved"),     # from_idx валиден (-1) → перемещение успешно
-            (0, -3, False, "unchanged"), # to_idx вне диапазона, но from_idx валиден → список не меняется
-            (0, 99, False, "unchanged"), # to_idx > len → вставка в конец, но логика теста требует "unchanged"
-        ],
-        ids=[
-            "from_idx вне диапазона (отрицательный)",
-            "from_idx вне диапазона (положительный)",
-            "from_idx валидный отрицательный",
-            "to_idx вне диапазона (отрицательный)",
-            "to_idx вне диапазона (положительный)"
-        ]
-    )
-    def test_move_ingredient_invalid_indices(self, from_idx, to_idx, expects_exception, expected_result):
+    @allure.title("Тест перемещения ингредиента: IndexError при некорректном from_idx")
+    @allure.description("Проверяет, что при некорректном from_idx возникает IndexError.")
+    @pytest.mark.parametrize("from_idx,to_idx", [(-3, 0),(99, 0),], ids=["from_idx вне диапазона (отрицательный)", "from_idx вне диапазона (положительный)"]) # from_idx вне диапазона (отрицательный) (99, 0),  # from_idx вне диапазона (положительный)
+    def test_move_ingredient_index_error(self, from_idx, to_idx):
+        with allure.step("Добавляем два ингредиента для теста перемещения"):
+            self.burger.add_ingredient(self.mock_ingredient)
+            self.burger.add_ingredient(self.mock_ingredient)
+        with allure.step(f"Пытаемся переместить ингредиент: from_idx={from_idx}, to_idx={to_idx}"):
+            with pytest.raises(IndexError):
+                self.burger.move_ingredient(from_idx, to_idx)
+
+
+    @allure.title("Тест перемещения ингредиента: успешное перемещение")
+    @allure.description("Проверяет корректное перемещение ингредиента при валидном from_idx.")
+    @pytest.mark.parametrize("from_idx,to_idx", [(-1, 0),], ids=["from_idx валидный отрицательный"]) # from_idx валидный отрицательный
+    def test_move_ingredient_success(self, from_idx, to_idx):
         with allure.step("Добавляем два ингредиента для теста перемещения"):
             self.burger.add_ingredient(self.mock_ingredient)
             self.burger.add_ingredient(self.mock_ingredient)
         original_ingredients = self.burger.ingredients.copy()
-        with allure.step(f"Пытаемся переместить ингредиент: from_idx={from_idx}, to_idx={to_idx}"):
-            if expects_exception:
-                with pytest.raises(IndexError):
-                    self.burger.move_ingredient(from_idx, to_idx)
-            else:
-                self.burger.move_ingredient(from_idx, to_idx)
-                if expected_result == "moved":
-                    assert len(self.burger.ingredients) == 2, "Количество ингредиентов изменилось"
-                    assert self.burger.ingredients[0] == original_ingredients[-1], "Элемент не переместился корректно"
-                elif expected_result == "unchanged":
-                    assert self.burger.ingredients == original_ingredients, \
-                        f"Список изменился при некорректном to_idx={to_idx}"
+        with allure.step(f"Перемещаем ингредиент: from_idx={from_idx}, to_idx={to_idx}"):
+            self.burger.move_ingredient(from_idx, to_idx)
+        with allure.step("Проверяем, что элемент переместился корректно"):
+            assert len(self.burger.ingredients) == 2, "Количество ингредиентов изменилось"
+            assert self.burger.ingredients[0] == original_ingredients[-1], "Элемент не переместился корректно"
+
+
+    @allure.title("Тест перемещения ингредиента: список не меняется при некорректном to_idx")
+    @allure.description("Проверяет, что список ингредиентов остаётся неизменным при некорректном to_idx.")
+    @pytest.mark.parametrize("from_idx,to_idx", [(0, -3), (0, 99),], ids=["to_idx вне диапазона (отрицательный)", "to_idx вне диапазона (положительный)"]) # to_idx вне диапазона (отрицательный) # to_idx вне диапазона (положительный)
+    def test_move_ingredient_unchanged(self, from_idx, to_idx):
+        with allure.step("Добавляем два ингредиента для теста перемещения"):
+            self.burger.add_ingredient(self.mock_ingredient)
+            self.burger.add_ingredient(self.mock_ingredient)
+        original_ingredients = self.burger.ingredients.copy()
+        with allure.step(f"Перемещаем ингредиент: from_idx={from_idx}, to_idx={to_idx}"):
+            self.burger.move_ingredient(from_idx, to_idx)
+        with allure.step("Проверяем, что список ингредиентов не изменился"):
+            assert self.burger.ingredients == original_ingredients, (f"Список изменился при некорректном to_idx={to_idx}")
 
 
     @allure.title("Тест получения пустого списка ингредиентов")
@@ -209,14 +204,12 @@ class TestBurger:
             assert price == expected_price, f"Цена должна быть {expected_price}, получено {price}"
         with allure.step("Формируем чек с пустой начинкой"):
             receipt = self.burger.get_receipt()
-        with allure.step("Проверяем структуру чека без ингредиентов"):
-            expected_lines = [
-                "(==== Белая булочка ====)",
-                "(==== Белая булочка ====)\n",
-                f"Price: {price}"
-            ]
-            for line in expected_lines:
-                assert line in receipt, f"Строка '{line}' отсутствует в чеке"
+        with allure.step("Формируем ожидаемое содержимое чека (без ингредиентов)"):
+            expected_lines = ["(==== Белая булочка ====)", "(==== Белая булочка ====)\n", f"Price: {price}"]
+            expected_receipt = "\n".join(expected_lines)  # Собираем в единую строку с переносами
+        with allure.step("Проверяем полное соответствие сгенерированного чека ожидаемому"):
+            assert receipt == expected_receipt, ("Сгенерированный чек не соответствует ожидаемому.\n" f"Ожидаемо:\n{expected_receipt}\n" f"Получено:\n{receipt}")
+        allure.attach(receipt, name="Сгенерированный чек (пустая начинка)", attachment_type=allure.attachment_type.TEXT)
 
 
     @allure.title("Тест повторного перемещения ингредиента")
